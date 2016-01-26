@@ -11,3 +11,6 @@ build
 dist
 var
 debug*
+
+# elang
+*.beam
