@@ -8,13 +8,13 @@ import random
 import time
 
 
-def test():
+def test(N):
     t = datetime.datetime.now()
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.settimeout(0.01)
     s.connect(('localhost', 1111))
     lost = 0
-    for i in range(int(sys.argv[1])):
+    for i in range(N):
         s.sendall(bytes(random.randint(20, 255) for _ in range(32)) + b'\n')
         try:
             time.sleep(0.001)
@@ -22,33 +22,35 @@ def test():
         except socket.timeout:
             lost += 1
     print(datetime.datetime.now() - t, i + 1, lost)
-    time.sleep(10)
+    s.close()
 
 
 def main():
-    N = 30
-    for i in range(N):
+    N = int(sys.argv[1])
+    C = 3
+    for i in range(C):
         pid = os.fork()
         if pid == 0:
-            test()
+            test(N)
             break
     else:
-        for i in range(N):
+        for i in range(C):
             print(os.wait())
 
 
 def main2():
     t = datetime.datetime.now()
-    N = 30000
+    N = 10000
     ss = []
     for i in range(N):
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.connect(('localhost', 1111))
+        #s.connect(('192.168.0.121', 1111))
+        s.connect(('sv', 1111))
         ss.append(s)
         #print(s)
     print(datetime.datetime.now() - t)
 
-    time.sleep(10)
+    input("continue...")
 
     t = datetime.datetime.now()
     for s in ss:
@@ -58,4 +60,4 @@ def main2():
 
 if __name__ == "__main__":
     sys.argv.append(10000)
-    main2()
+    main()

@@ -5,11 +5,14 @@ import logging
 import multiprocessing
 import os
 import signal
+import socket
 import sys
+import time
 
+import ENV  # my custom namespace
 
-num_of_children = 0 if len(sys.argv) < 2 else int(sys.argv[1])
-assert num_of_children >= 0, num_of_children
+num_of_children = 1 if len(sys.argv) < 2 else int(sys.argv[1])
+assert num_of_children >= 1, num_of_children
 children = []
 
 
@@ -28,17 +31,27 @@ def _term(signal_number=None, stack_frame=None):
 
 
 def bind_udp_socket(port, host="0.0.0.0"):
-    import socket
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     s.bind((host, port))
     return s
 
 
+def loop_father():
+    try:
+        from web import run
+        run()
+    except ImportError:
+        while True:
+            if input("cmd: ") == "q!":
+                break
+    _term()
+
+
 def loop(port=1514):
     s = bind_udp_socket(port)
 
-    num_of_locks = (num_of_children + 1) ** 2
-    assert num_of_locks == pow(num_of_children + 1, 2), num_of_locks
+    num_of_locks = num_of_children ** 2
+    assert num_of_locks == pow(num_of_children, 2), num_of_locks
     _Lock = multiprocessing.Lock or multiprocessing.Semaphore
     locks = [_Lock() for _ in range(num_of_locks)]
 
@@ -54,6 +67,10 @@ def loop(port=1514):
         with open(".pid", "w") as f:
             f.write(str(os.getpid()))
         log_to_stderr("father and children:", os.getpid(), children)
+        ENV.locks = locks
+        ENV.children = children
+        ENV.udp = s
+        return loop_father()
 
     pid = os.getpid()
     msg = None
