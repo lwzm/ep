@@ -1,3 +1,3 @@
 #!/bin/sh
-erlc -o ebin tcp.erl
+erlc -o ebin tcp.erl && \
 supervisorctl restart erl
