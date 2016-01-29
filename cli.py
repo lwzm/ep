@@ -27,7 +27,7 @@ def test(N):
 
 def main():
     N = int(sys.argv[1])
-    C = 3
+    C = 5
     for i in range(C):
         pid = os.fork()
         if pid == 0:
@@ -44,8 +44,7 @@ def main2():
     ss = []
     for i in range(N):
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        #s.connect(('192.168.0.121', 1111))
-        s.connect(('sv', 1111))
+        s.connect(('localhost', 1111))
         ss.append(s)
         #print(s)
     print(datetime.datetime.now() - t)
