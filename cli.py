@@ -21,7 +21,7 @@ def pack_bytes_with_head(bs):
 
 def new_tcp_client():
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.settimeout(0.01)
+    s.settimeout(0.1)
     s.connect(('localhost', PORT))
     return s
 
@@ -59,11 +59,12 @@ def main():
 
 def main2():
     t = datetime.datetime.now()
-    N = 10000
+    N = 30000
     ss = []
     for i in range(N):
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.connect(('localhost', PORT))
+        s.sendall(pack_bytes_with_head(_int_16(i)))
         ss.append(s)
         #print(s)
     print(datetime.datetime.now() - t)

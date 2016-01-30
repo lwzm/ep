@@ -45,8 +45,8 @@ monitor() ->
     receive
         {monitor, Pid} ->
             link(Pid);
-        {'EXIT', Pid, Why} ->
-            io:format("EXIT ~p ~p ~n", [Pid, Why]),
+        {'EXIT', _Pid, _Why} ->
+            %io:format("EXIT ~p ~p ~n", [_Pid, _Why]),
             print
     end,
     monitor().
@@ -64,7 +64,7 @@ tcp_accept_start(Socket, Downstream) ->
     receive
         {tcp, Socket, Data} ->
             <<ID:?ID_SIZE/binary, _/binary>> = <<Data/binary, <<0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0>>/binary>>,
-            io:format("~p ~p ~n", [ID, Data]),
+            %io:format("~p ~p ~n", [ID, Data]),
             my_udp ! {client_login, ID, self()},%login
             inet:setopts(Socket, [{active, ?ACTIVE_TIMES}]),
             tcp_accept_loop(Socket, ID, Downstream);
@@ -92,6 +92,7 @@ tcp_accept_loop(Socket, ID, {UDPSocket, Address, Port}=Downstream) ->
             my_udp ! {client_logout, ID},
             over;
         {kick, ID} ->
+            % do not my_udp ! {client_logout, ID},
             over;
         Other ->
             io:format("~p ~p received unknown: ~p ~n", [self(), Socket, Other]),
