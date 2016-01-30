@@ -5,17 +5,31 @@ import socket
 import sys
 import os
 import random
+import struct
 import time
+
+_int_16 = struct.Struct("!H").pack
+
+def pack_bytes_with_head(bs):
+    if isinstance(bs, str):
+        bs = bs.encode()
+    return _int_16(len(bs)) + bs
+
+
+def new_tcp_client():
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.settimeout(0.01)
+    s.connect(('localhost', 1111))
+    return s
 
 
 def test(N):
     t = datetime.datetime.now()
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.settimeout(0.01)
-    s.connect(('localhost', 1111))
+    s = new_tcp_client()
     lost = 0
     for i in range(N):
-        s.sendall(bytes(random.randint(20, 255) for _ in range(32)) + b'\n')
+        #s.sendall(bytes(random.randint(20, 255) for _ in range(32)) + b'\n')
+        s.sendall(pack_bytes_with_head(b'x'*65505))
         try:
             time.sleep(0.001)
             s.recv(1024)
@@ -58,5 +72,5 @@ def main2():
 
 
 if __name__ == "__main__":
-    sys.argv.append(10000)
+    sys.argv.append(10)
     main()

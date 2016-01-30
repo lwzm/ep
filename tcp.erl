@@ -5,12 +5,17 @@
 -export([monitor/0]).
 -define(DOWNSTREAM_PORT, 1514).
 -define(ACTIVE_TIMES, 10).
+-define(PACKET_HEAD_SIZE, 2).
+
 
 run() ->
     Port = 1111,
     DownstreamHost = "localhost",
     {ok, DownstreamAddress} = inet:getaddr(DownstreamHost, inet),
-    {ok, TCPSocket} = gen_tcp:listen(Port, [binary, {active, false}, {backlog, 1024}]),
+    {ok, TCPSocket} = gen_tcp:listen(Port, [{backlog, 1024},  % lots of clients are connecting
+                                            {packet, get_packet_type()},  % 1, 2, or line
+                                            {packet_size, 65507 - ?PACKET_HEAD_SIZE},  % same as max length of UDP message
+                                            binary, {active, false}]),
     {ok, UDPSocket} = gen_udp:open(Port, [binary, {active, true}]),
     TCPAcceptPid = spawn(?MODULE, tcp_accept, [TCPSocket, {UDPSocket, DownstreamAddress, ?DOWNSTREAM_PORT}]),
     UDPReaderPid = spawn(?MODULE, udp_read, [UDPSocket, dict:new()]),
@@ -22,6 +27,14 @@ run() ->
     true = register(monitor, spawn(?MODULE, monitor, [])),
 
     running.
+
+
+get_packet_type() -> get_packet_type(init:get_argument('packet-type')).
+get_packet_type({ok, [["1"]]}) -> 1;
+get_packet_type({ok, [["2"]]}) -> 2;
+get_packet_type(_) -> line.
+
+
 
 monitor() ->
     process_flag(trap_exit, true),
@@ -45,7 +58,7 @@ tcp_accept(LSocket, ID, Downstream) ->
     monitor ! {monitor, Pid},
     my_udp ! {client_login, ID, Pid},%login
     gen_tcp:controlling_process(ASocket, Pid),
-    inet:setopts(ASocket, [{packet, line}, {active, ?ACTIVE_TIMES}]),
+    inet:setopts(ASocket, [{active, ?ACTIVE_TIMES}]),
     tcp_accept(LSocket, (ID + 1) band 16#FFFF, Downstream).
 
 

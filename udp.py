@@ -82,7 +82,7 @@ def loop(port=1514):
             lock_id = sum(msg[:12]) % num_of_locks
 
             with locks[lock_id]:
-                #print(seq, pid, msg)
+                #print(seq, pid, len(msg))
                 #msg = str(, [addr, pid]).encode() + msg
                 s.sendto(msg, addr)
 
