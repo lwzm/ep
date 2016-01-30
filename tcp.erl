@@ -35,7 +35,6 @@ get_packet_type({ok, [["2"]]}) -> 2;
 get_packet_type(_) -> line.
 
 
-
 monitor() ->
     process_flag(trap_exit, true),
     receive

@@ -29,9 +29,9 @@ def test(N):
     lost = 0
     for i in range(N):
         #s.sendall(bytes(random.randint(20, 255) for _ in range(32)) + b'\n')
-        s.sendall(pack_bytes_with_head(b'x'*65505))
+        s.sendall(pack_bytes_with_head(b'x'*256))
         try:
-            time.sleep(0.001)
+            #time.sleep(0.001)
             s.recv(1024)
         except socket.timeout:
             lost += 1
