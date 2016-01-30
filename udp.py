@@ -11,7 +11,7 @@ import time
 
 import ENV  # my custom namespace
 
-num_of_children = 1 if len(sys.argv) < 2 else int(sys.argv[1])
+num_of_children = int(os.getenv("CHILDREN", 1))
 assert num_of_children >= 1, num_of_children
 children = []
 
@@ -47,8 +47,9 @@ def loop_father():
     _term()
 
 
-def loop(port=1514):
-    s = bind_udp_socket(port)
+def loop(port):
+    s = bind_udp_socket(port + 1)
+    s.connect(("localhost", port))
 
     num_of_locks = num_of_children ** 2
     assert num_of_locks == pow(num_of_children, 2), num_of_locks
@@ -92,4 +93,4 @@ def loop(port=1514):
 
 
 if __name__ == "__main__":
-    loop()
+    loop(int(os.getenv("PORT", 1111)))

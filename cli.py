@@ -8,6 +8,9 @@ import random
 import struct
 import time
 
+PORT = 1111
+PORT = 1024
+
 _int_16 = struct.Struct("!H").pack
 
 def pack_bytes_with_head(bs):
@@ -19,22 +22,24 @@ def pack_bytes_with_head(bs):
 def new_tcp_client():
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.settimeout(0.01)
-    s.connect(('localhost', 1111))
+    s.connect(('localhost', PORT))
     return s
 
 
-def test(N):
+def test(N, i):
     t = datetime.datetime.now()
     s = new_tcp_client()
     lost = 0
+    s.sendall(pack_bytes_with_head(bytes([i])))
     for i in range(N):
         #s.sendall(bytes(random.randint(20, 255) for _ in range(32)) + b'\n')
         s.sendall(pack_bytes_with_head(b'x'*256))
         try:
-            #time.sleep(0.001)
+            time.sleep(0.001)
             s.recv(1024)
         except socket.timeout:
             lost += 1
+    time.sleep(0)
     print(datetime.datetime.now() - t, i + 1, lost)
     s.close()
 
@@ -45,7 +50,7 @@ def main():
     for i in range(C):
         pid = os.fork()
         if pid == 0:
-            test(N)
+            test(N, i)
             break
     else:
         for i in range(C):
@@ -58,7 +63,7 @@ def main2():
     ss = []
     for i in range(N):
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.connect(('localhost', 1111))
+        s.connect(('localhost', PORT))
         ss.append(s)
         #print(s)
     print(datetime.datetime.now() - t)

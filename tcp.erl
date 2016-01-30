@@ -5,21 +5,21 @@
 -export([monitor/0]).
 -define(ID_SIZE, 12).
 -define(PACKET_HEAD_MAX_SIZE, 2).
--define(DOWNSTREAM_PORT, 1514).
 -define(ACTIVE_TIMES, 10).
 
 
 run() ->
-    Port = 1111,
-    DownstreamHost = "localhost",
-    {ok, DownstreamAddress} = inet:getaddr(DownstreamHost, inet),
+    Port = args_port(),
+    DownstreamPort = Port + 1,
+    {ok, DownstreamAddress} = inet:getaddr("localhost", inet),
     {ok, TCPSocket} = gen_tcp:listen(Port, [{backlog, 1024},  % lots of clients are connecting
-                                            {packet, get_packet_type()},  % 1, 2, or line
+                                            {packet, args_packet_type()},  % 1, 2, or line
                                             {packet_size, 65507 - ?PACKET_HEAD_MAX_SIZE - ?ID_SIZE},  % same as max length of UDP message
                                             binary, {active, true}]),
     {ok, UDPSocket} = gen_udp:open(Port, [binary, {active, true}]),
-    TCPAcceptPid = spawn(?MODULE, tcp_accept, [TCPSocket, {UDPSocket, DownstreamAddress, ?DOWNSTREAM_PORT}]),
-    UDPReaderPid = spawn(?MODULE, udp_read, [UDPSocket, dict:new()]),
+    Downstream = {UDPSocket, DownstreamAddress, DownstreamPort},
+    TCPAcceptPid = spawn(?MODULE, tcp_accept, [TCPSocket, Downstream]),
+    UDPReaderPid = spawn(?MODULE, udp_read, [Downstream, dict:new()]),
     true = register(my_tcp, TCPAcceptPid),
     true = register(my_udp, UDPReaderPid),
     ok = gen_tcp:controlling_process(TCPSocket, TCPAcceptPid),
@@ -30,10 +30,14 @@ run() ->
     running.
 
 
-get_packet_type() -> get_packet_type(init:get_argument('packet-type')).
-get_packet_type({ok, [["1"]]}) -> 1;
-get_packet_type({ok, [["2"]]}) -> 2;
-get_packet_type(_) -> line.
+args_port() -> args_port(init:get_argument(port)).
+args_port({ok, [[N]]}) -> list_to_integer(N);
+args_port(_) -> 1111.
+
+args_packet_type() -> args_packet_type(init:get_argument('packet-type')).
+args_packet_type({ok, [["1"]]}) -> 1;
+args_packet_type({ok, [["2"]]}) -> 2;
+args_packet_type(_) -> line.
 
 
 monitor() ->
@@ -64,27 +68,25 @@ tcp_accept_start(Socket, Downstream) ->
             my_udp ! {client_login, ID, self()},%login
             inet:setopts(Socket, [{active, ?ACTIVE_TIMES}]),
             tcp_accept_loop(Socket, ID, Downstream);
+        {tcp_closed, Socket} ->
+            io:format("tcp_accept_start interrupted ~p ~n", [Socket]);
         Other ->
-            io:format("~p ~n", [Other])
+            io:format("tcp_accept_start error ~p ~n", [Other])
     end.
 
 
 tcp_accept_loop(Socket, ID, {UDPSocket, Address, Port}=Downstream) ->
-    Over =
     receive
         {tcp, Socket, Data} ->
             %io:format("socket ~p recv: ~p ~n", [Socket, Data]),
-            ok = gen_udp:send(UDPSocket, Address, Port, <<ID/binary, Data/binary>>),
-            case Data of
-                <<"q!\n">> ->
-                    over;
-                _ ->
-                    continue
-            end;
+            gen_udp:send(UDPSocket, Address, Port, <<ID/binary, Data/binary>>),
+            tcp_accept_loop(Socket, ID, Downstream);
         {reply_to_client, Data} ->
-            ok = gen_tcp:send(Socket, Data);
+            gen_tcp:send(Socket, Data),
+            tcp_accept_loop(Socket, ID, Downstream);
         {tcp_passive, Socket} ->
-            ok = inet:setopts(Socket, [{active, ?ACTIVE_TIMES}]);
+            ok = inet:setopts(Socket, [{active, ?ACTIVE_TIMES}]),
+            tcp_accept_loop(Socket, ID, Downstream);
         {tcp_closed, Socket} ->
             %io:format("socket ~p closed ~n", [Socket]),
             my_udp ! {client_logout, ID},
@@ -95,20 +97,13 @@ tcp_accept_loop(Socket, ID, {UDPSocket, Address, Port}=Downstream) ->
             io:format("~p ~p received unknown: ~p ~n", [self(), Socket, Other]),
             my_udp ! {client_logout, ID},
             over
-    end,
-
-    case Over of
-        over ->
-            over;
-        _ ->
-            tcp_accept_loop(Socket, ID, Downstream)
     end.
 
 
-udp_read(Socket, Onlines) ->
+udp_read({Socket, DownstreamAddress, DownstreamPort}=Downstream, Onlines) ->
     OnlinesNew =
     receive
-        {udp, Socket, _Host, ?DOWNSTREAM_PORT, Bin} ->
+        {udp, Socket, DownstreamAddress, DownstreamPort, Bin} ->
             %io:format("server received:~p from ~p:~p~n", [Bin, Host, Port]), 
             try
                 <<ID:?ID_SIZE/binary, Data/binary>> = Bin,
@@ -131,7 +126,7 @@ udp_read(Socket, Onlines) ->
             io:format("my_udp received unknown: ~p ~n", [Other]),
             Onlines
     end,
-    udp_read(Socket, OnlinesNew).
+    udp_read(Downstream, OnlinesNew).
 
 q() ->
     my_udp ! {q, self()},
