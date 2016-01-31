@@ -21,7 +21,7 @@ def pack_bytes_with_head(bs):
 
 def new_tcp_client():
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.settimeout(0.1)
+    s.settimeout(0.01)
     s.connect(('localhost', PORT))
     return s
 
@@ -32,7 +32,7 @@ def test(N, i):
     lost = 0
     s.sendall(pack_bytes_with_head(bytes([i])))
     for i in range(N):
-        #s.sendall(bytes(random.randint(20, 255) for _ in range(32)) + b'\n')
+        #s.sendall(b'\0' + bytes(random.randint(20, 255) for _ in range(32)) + b'\n')
         s.sendall(pack_bytes_with_head(b'x'*256))
         try:
             time.sleep(0.001)

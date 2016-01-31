@@ -15,7 +15,7 @@ run() ->
     {ok, TCPSocket} = gen_tcp:listen(Port, [{backlog, 1024},  % lots of clients are connecting
                                             {packet, args_packet_type()},  % 1, 2, or line
                                             {packet_size, 65507 - ?PACKET_HEAD_MAX_SIZE - ?ID_SIZE},  % same as max length of UDP message
-                                            binary, {active, true}]),
+                                            binary, {active, false}]),
     {ok, UDPSocket} = gen_udp:open(Port, [binary, {active, true}]),
     Downstream = {UDPSocket, DownstreamAddress, DownstreamPort},
     TCPAcceptPid = spawn(?MODULE, tcp_accept, [TCPSocket, Downstream]),
@@ -25,7 +25,7 @@ run() ->
     ok = gen_tcp:controlling_process(TCPSocket, TCPAcceptPid),
     ok = gen_udp:controlling_process(UDPSocket, UDPReaderPid),
 
-    true = register(monitor, spawn(?MODULE, monitor, [])),
+    true = register(my_monitor, spawn(?MODULE, monitor, [])),
 
     running.
 
@@ -53,11 +53,30 @@ monitor() ->
 
 
 tcp_accept(LSocket, Downstream) ->
-    {ok, ASocket} = gen_tcp:accept(LSocket),
-    Pid = spawn(?MODULE, tcp_accept_start, [ASocket, Downstream]),
-    gen_tcp:controlling_process(ASocket, Pid),
-    monitor ! {monitor, Pid},
-    tcp_accept(LSocket, Downstream).
+    tcp_accept(LSocket, Downstream, 0).
+
+tcp_accept(LSocket, Downstream, N) ->
+    receive
+        count ->
+            io:format("tcp_accept count: ~p ~n", [N]);
+        Msg ->
+            io:format("tcp_accept receive ~p ~n", [Msg])
+    after 0 ->
+              clean
+    end,
+    case gen_tcp:accept(LSocket, 1000) of
+        {ok, ASocket} ->
+            inet:setopts(ASocket, [{active, once}]),
+            Pid = spawn(?MODULE, tcp_accept_start, [ASocket, Downstream]),
+            gen_tcp:controlling_process(ASocket, Pid),
+            my_monitor ! {monitor, Pid},
+            tcp_accept(LSocket, Downstream, N + 1);
+        {error,timeout} ->
+            tcp_accept(LSocket, Downstream, N);
+        Other ->
+            io:format("tcp_accept Other ~p ~n", [Other]),
+            tcp_accept(LSocket, Downstream, N)
+    end.
 
 
 tcp_accept_start(Socket, Downstream) ->
@@ -105,7 +124,6 @@ udp_read({Socket, DownstreamAddress, DownstreamPort}=Downstream, Onlines) ->
     OnlinesNew =
     receive
         {udp, Socket, DownstreamAddress, DownstreamPort, Bin} ->
-            %io:format("server received:~p from ~p:~p~n", [Bin, Host, Port]), 
             try
                 <<ID:?ID_SIZE/binary, Data/binary>> = Bin,
                 reply_to_client(dict:find(ID, Onlines), Data)
@@ -114,6 +132,10 @@ udp_read({Socket, DownstreamAddress, DownstreamPort}=Downstream, Onlines) ->
                     io:format("udp_read error: ~p ~n", [X]),
                     {error, X}
             end,
+            Onlines;
+        {udp, Socket, Address, Port, Bin} ->
+            Data = list_to_binary(format("~p~n~p~n", [dict:size(Onlines), erlang:process_info(self())])),
+            gen_udp:send(Socket, Address, Port, Data),
             Onlines;
         {client_login, ID, Pid} ->
             kick_another_client(dict:find(ID, Onlines), ID),
@@ -145,3 +167,7 @@ reply_to_client({ok, Pid}, Data) ->
     Pid ! {reply_to_client, Data};
 reply_to_client(error, _) ->
     do_nothing.
+
+format(Format, Data) ->
+    lists:flatten(io_lib:format(Format, Data)).
+
