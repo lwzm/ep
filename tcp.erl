@@ -47,7 +47,9 @@ monitor() ->
             link(Pid);
         {'EXIT', _Pid, _Why} ->
             %io:format("EXIT ~p ~p ~n", [_Pid, _Why]),
-            print
+            known;
+        _ ->
+            clean
     end,
     monitor().
 
@@ -106,15 +108,11 @@ tcp_accept_loop(Socket, ID, {UDPSocket, Address, Port}=Downstream) ->
         {tcp_passive, Socket} ->
             ok = inet:setopts(Socket, [{active, ?ACTIVE_TIMES}]),
             tcp_accept_loop(Socket, ID, Downstream);
-        {tcp_closed, Socket} ->
-            %io:format("socket ~p closed ~n", [Socket]),
-            my_udp ! {client_logout, ID},
-            over;
         {kick, ID} ->
-            % do not my_udp ! {client_logout, ID},
+            % do not: my_udp ! {client_logout, ID},
             over;
-        Other ->
-            io:format("~p ~p received unknown: ~p ~n", [self(), Socket, Other]),
+        _Other ->
+            %io:format("~p ~p received unknown: ~p ~n", [self(), Socket, Other]),
             my_udp ! {client_logout, ID},
             over
     end.
@@ -134,7 +132,7 @@ udp_read({Socket, DownstreamAddress, DownstreamPort}=Downstream, Onlines) ->
             end,
             Onlines;
         {udp, Socket, Address, Port, Bin} ->
-            Data = list_to_binary(format("~p~n~p~n", [dict:size(Onlines), erlang:process_info(self())])),
+            Data = list_to_binary(format("~p~n~p~n", [dict:size(Onlines), get_process_info(Bin)])),
             gen_udp:send(Socket, Address, Port, Data),
             Onlines;
         {client_login, ID, Pid} ->
@@ -150,6 +148,17 @@ udp_read({Socket, DownstreamAddress, DownstreamPort}=Downstream, Onlines) ->
             Onlines
     end,
     udp_read(Downstream, OnlinesNew).
+
+get_process_info(undefined) ->
+    error;
+get_process_info(Name) when is_binary(Name) ->
+    get_process_info(binary_to_list(Name));
+get_process_info(Name) when is_list(Name) ->
+    get_process_info(list_to_atom(string:strip(Name, both, $\n)));
+get_process_info(Name) when is_atom(Name) ->
+    get_process_info(whereis(Name));
+get_process_info(Pid) when is_pid(Pid) ->
+    erlang:process_info(Pid, message_queue_len).
 
 q() ->
     my_udp ! {q, self()},
