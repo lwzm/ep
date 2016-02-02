@@ -1,8 +1,9 @@
 -module(tcp).
 
--export([run/0, tcp_accept/2, udp_read/2, q/0]).
+-export([run/0, tcp_accept/2, udp_read/2]).
 -export([tcp_accept_start/2]).
 -export([monitor/0]).
+-compile(export_all).
 -define(ID_SIZE, 12).
 -define(PACKET_HEAD_MAX_SIZE, 2).
 -define(ACTIVE_TIMES, 10).
@@ -30,6 +31,12 @@ run() ->
     running.
 
 
+log(Args) ->
+    {{Year, Month, Day}, {Hour, Minute, Second}} = calendar:local_time(),
+    io:format("~4..0w-~2..0w-~2..0w ~2..0w:~2..0w:~2..0w  ~p~n",
+              [Year, Month, Day, Hour, Minute, Second, Args]).
+
+
 args_port() -> args_port(init:get_argument(port)).
 args_port({ok, [[N]]}) -> list_to_integer(N);
 args_port(_) -> 1111.
@@ -46,7 +53,6 @@ monitor() ->
         {monitor, Pid} ->
             link(Pid);
         {'EXIT', _Pid, _Why} ->
-            %io:format("EXIT ~p ~p ~n", [_Pid, _Why]),
             known;
         _ ->
             clean
@@ -60,9 +66,9 @@ tcp_accept(LSocket, Downstream) ->
 tcp_accept(LSocket, Downstream, N) ->
     receive
         count ->
-            io:format("tcp_accept count: ~p ~n", [N]);
+            log({"tcp_accept count:", N});
         Msg ->
-            io:format("tcp_accept receive ~p ~n", [Msg])
+            log({"tcp_accept received unknown:", Msg})
     after 0 ->
               clean
     end,
@@ -76,7 +82,7 @@ tcp_accept(LSocket, Downstream, N) ->
         {error,timeout} ->
             tcp_accept(LSocket, Downstream, N);
         Other ->
-            io:format("tcp_accept Other ~p ~n", [Other]),
+            log({"tcp_accept Other", Other}),
             tcp_accept(LSocket, Downstream, N)
     end.
 
@@ -85,21 +91,17 @@ tcp_accept_start(Socket, Downstream) ->
     receive
         {tcp, Socket, Data} ->
             <<ID:?ID_SIZE/binary, _/binary>> = <<Data/binary, <<0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0>>/binary>>,
-            %io:format("~p ~p ~n", [ID, Data]),
             my_udp ! {client_login, ID, self()},%login
             inet:setopts(Socket, [{active, ?ACTIVE_TIMES}]),
             tcp_accept_loop(Socket, ID, Downstream);
-        {tcp_closed, Socket} ->
-            io:format("tcp_accept_start interrupted ~p ~n", [Socket]);
         Other ->
-            io:format("tcp_accept_start error ~p ~n", [Other])
+            log({"tcp_accept_start error", Other})
     end.
 
 
 tcp_accept_loop(Socket, ID, {UDPSocket, Address, Port}=Downstream) ->
     receive
         {tcp, Socket, Data} ->
-            %io:format("socket ~p recv: ~p ~n", [Socket, Data]),
             gen_udp:send(UDPSocket, Address, Port, <<ID/binary, Data/binary>>),
             tcp_accept_loop(Socket, ID, Downstream);
         {reply_to_client, Data} ->
@@ -112,7 +114,6 @@ tcp_accept_loop(Socket, ID, {UDPSocket, Address, Port}=Downstream) ->
             % do not: my_udp ! {client_logout, ID},
             over;
         _Other ->
-            %io:format("~p ~p received unknown: ~p ~n", [self(), Socket, Other]),
             my_udp ! {client_logout, ID},
             over
     end.
@@ -122,14 +123,8 @@ udp_read({Socket, DownstreamAddress, DownstreamPort}=Downstream, Onlines) ->
     OnlinesNew =
     receive
         {udp, Socket, DownstreamAddress, DownstreamPort, Bin} ->
-            try
-                <<ID:?ID_SIZE/binary, Data/binary>> = Bin,
-                reply_to_client(dict:find(ID, Onlines), Data)
-            catch
-                error:X ->
-                    io:format("udp_read error: ~p ~n", [X]),
-                    {error, X}
-            end,
+            <<ID:?ID_SIZE/binary, Data/binary>> = Bin,
+            reply_to_client(dict:find(ID, Onlines), Data),
             Onlines;
         {udp, Socket, Address, Port, Bin} ->
             Data = list_to_binary(format("~p~n~p~n", [dict:size(Onlines), get_process_info(Bin)])),
@@ -140,11 +135,8 @@ udp_read({Socket, DownstreamAddress, DownstreamPort}=Downstream, Onlines) ->
             dict:store(ID, Pid, Onlines);
         {client_logout, ID} ->
             dict:erase(ID, Onlines);
-        {q, Pid} ->
-            Pid ! {dict:size(Onlines), erlang:length(get()), erlang:process_info(self(), message_queue_len)},
-            Onlines;
         Other ->
-            io:format("my_udp received unknown: ~p ~n", [Other]),
+            log({"my_udp received unknown", Other}),
             Onlines
     end,
     udp_read(Downstream, OnlinesNew).
@@ -160,12 +152,6 @@ get_process_info(Name) when is_atom(Name) ->
 get_process_info(Pid) when is_pid(Pid) ->
     erlang:process_info(Pid, message_queue_len).
 
-q() ->
-    my_udp ! {q, self()},
-    receive
-        Msg ->
-            io:format("~p ~n", [Msg])
-    end.
 
 kick_another_client({ok, Pid}, ID) ->
     Pid ! {kick, ID};
@@ -179,4 +165,3 @@ reply_to_client(error, _) ->
 
 format(Format, Data) ->
     lists:flatten(io_lib:format(Format, Data)).
-
