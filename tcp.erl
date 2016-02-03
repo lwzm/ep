@@ -1,6 +1,6 @@
 -module(tcp).
 
--export([run/0, tcp_accept/2, udp_read/2]).
+-export([run/0, tcp_accept/2, udp_loop/2]).
 -export([tcp_accept_start/2]).
 -export([monitor/0]).
 -compile(export_all).
@@ -20,7 +20,7 @@ run() ->
     {ok, UDPSocket} = gen_udp:open(Port, [binary, {active, true}]),
     Downstream = {UDPSocket, DownstreamAddress, DownstreamPort},
     TCPAcceptPid = spawn(?MODULE, tcp_accept, [TCPSocket, Downstream]),
-    UDPReaderPid = spawn(?MODULE, udp_read, [Downstream, dict:new()]),
+    UDPReaderPid = spawn(?MODULE, udp_loop, [Downstream, dict:new()]),
     true = register(my_tcp, TCPAcceptPid),
     true = register(my_udp, UDPReaderPid),
     ok = gen_tcp:controlling_process(TCPSocket, TCPAcceptPid),
@@ -31,10 +31,10 @@ run() ->
     running.
 
 
-log(Args) ->
+log(Msg) ->
     {{Year, Month, Day}, {Hour, Minute, Second}} = calendar:local_time(),
     io:format("~4..0w-~2..0w-~2..0w ~2..0w:~2..0w:~2..0w  ~p~n",
-              [Year, Month, Day, Hour, Minute, Second, Args]).
+              [Year, Month, Day, Hour, Minute, Second, Msg]).
 
 
 args_port() -> args_port(init:get_argument(port)).
@@ -66,9 +66,9 @@ tcp_accept(LSocket, Downstream) ->
 tcp_accept(LSocket, Downstream, N) ->
     receive
         count ->
-            log({"tcp_accept count:", N});
+            log({tcp_accept, count, N});
         Msg ->
-            log({"tcp_accept received unknown:", Msg})
+            log({unknown, tcp_accept, Msg})
     after 0 ->
               clean
     end,
@@ -79,10 +79,10 @@ tcp_accept(LSocket, Downstream, N) ->
             gen_tcp:controlling_process(ASocket, Pid),
             my_monitor ! {monitor, Pid},
             tcp_accept(LSocket, Downstream, N + 1);
-        {error,timeout} ->
+        {error, timeout} ->
             tcp_accept(LSocket, Downstream, N);
         Other ->
-            log({"tcp_accept Other", Other}),
+            log({unknown, tcp_accept, Other}),
             tcp_accept(LSocket, Downstream, N)
     end.
 
@@ -95,7 +95,7 @@ tcp_accept_start(Socket, Downstream) ->
             inet:setopts(Socket, [{active, ?ACTIVE_TIMES}]),
             tcp_accept_loop(Socket, ID, Downstream);
         Other ->
-            log({"tcp_accept_start error", Other})
+            log({unknown, tcp_accept_start, Other})
     end.
 
 
@@ -119,8 +119,17 @@ tcp_accept_loop(Socket, ID, {UDPSocket, Address, Port}=Downstream) ->
     end.
 
 
-udp_read({Socket, DownstreamAddress, DownstreamPort}=Downstream, Onlines) ->
-    OnlinesNew =
+udp_loop(Downstream, Onlines) ->
+    try udp_recv(Downstream, Onlines) of
+        OnlinesNew ->
+            udp_loop(Downstream, OnlinesNew)
+    catch
+        _:Why ->
+            log({error, udp_recv, Why}),
+            udp_loop(Downstream, Onlines)
+    end.
+
+udp_recv({Socket, DownstreamAddress, DownstreamPort}, Onlines) ->
     receive
         {udp, Socket, DownstreamAddress, DownstreamPort, Bin} ->
             <<ID:?ID_SIZE/binary, Data/binary>> = Bin,
@@ -136,10 +145,10 @@ udp_read({Socket, DownstreamAddress, DownstreamPort}=Downstream, Onlines) ->
         {client_logout, ID} ->
             dict:erase(ID, Onlines);
         Other ->
-            log({"my_udp received unknown", Other}),
+            log({unknown, udp_recv, Other}),
             Onlines
-    end,
-    udp_read(Downstream, OnlinesNew).
+    end.
+
 
 get_process_info(undefined) ->
     error;

@@ -33,7 +33,7 @@ def test(N, i):
     s.sendall(pack_bytes_with_head(bytes([i])))
     for i in range(N):
         #s.sendall(b'\0' + bytes(random.randint(20, 255) for _ in range(32)) + b'\n')
-        s.sendall(pack_bytes_with_head(b'x'*256))
+        s.sendall(pack_bytes_with_head(b'x'*64))
         try:
             time.sleep(0.001)
             s.recv(1024)
