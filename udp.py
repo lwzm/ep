@@ -49,7 +49,7 @@ def loop_father():
 
 def loop(port):
     s = bind_udp_socket(port + 1)
-    s.connect(("localhost", port))
+    upstream = ("127.0.0.1", port)
 
     num_of_locks = num_of_children ** 2
     assert num_of_locks == pow(num_of_children, 2), num_of_locks
@@ -78,14 +78,14 @@ def loop(port):
 
     while True:
         try:
-            msg, addr = s.recvfrom(65536)
+            msg, addr = s.recvfrom(65536)  # addr may not == upstream
 
             lock_id = sum(msg[:12]) % num_of_locks
 
             with locks[lock_id]:
                 #print(seq, pid, len(msg))
                 #msg = str(, [addr, pid]).encode() + msg
-                s.sendto(msg, addr)
+                s.sendto(msg, upstream)
 
         except Exception as e:
             logging.exception(
