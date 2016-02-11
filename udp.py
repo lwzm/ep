@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import datetime
+import ipaddress
 import logging
 import multiprocessing
 import os
@@ -48,7 +49,9 @@ def loop_father():
 
 
 def loop(port):
-    upstream = host, _ = "127.0.0.3", port
+    _id = int(os.getenv("HOST_ID", 1))
+    host = str(ipaddress.ip_address(0x7F000000 + _id))  # 127.0.0.xxx
+    upstream = host, port
     s = bind_udp_socket(port + 1, host)
     s.connect((host, 0))
 

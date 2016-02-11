@@ -12,7 +12,8 @@
 run() ->
     Port = args_port(),
     DownstreamPort = Port + 1,
-    {ok, DownstreamAddress} = inet:getaddr("127.0.0.3", inet),
+    <<_1, _2, _3, _4>> = <<127, (args_host_id()):24>>,
+    DownstreamAddress = {_1, _2, _3, _4},
     {ok, TCPSocket} = gen_tcp:listen(Port, [{backlog, 1024},  % lots of clients are connecting
                                             {packet, args_packet_type()},  % 1, 2, or line
                                             {packet_size, 65507 - ?PACKET_HEAD_MAX_SIZE - ?ID_SIZE},  % same as max length of UDP message
@@ -41,11 +42,14 @@ args_port() -> args_port(init:get_argument(port)).
 args_port({ok, [[N]]}) -> list_to_integer(N);
 args_port(_) -> 1111.
 
-args_packet_type() -> args_packet_type(init:get_argument('packet-type')).
+args_packet_type() -> args_packet_type(init:get_argument(packet_type)).
 args_packet_type({ok, [["1"]]}) -> 1;
 args_packet_type({ok, [["2"]]}) -> 2;
 args_packet_type(_) -> line.
 
+args_host_id() -> args_host_id(init:get_argument(host_id)).
+args_host_id({ok, [[N]]}) -> list_to_integer(N);
+args_host_id(_) -> 1.
 
 monitor() ->
     process_flag(trap_exit, true),
