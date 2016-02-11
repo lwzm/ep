@@ -12,7 +12,7 @@
 run() ->
     Port = args_port(),
     DownstreamPort = Port + 1,
-    {ok, DownstreamAddress} = inet:getaddr("localhost", inet),
+    {ok, DownstreamAddress} = inet:getaddr("127.0.0.3", inet),
     {ok, TCPSocket} = gen_tcp:listen(Port, [{backlog, 1024},  % lots of clients are connecting
                                             {packet, args_packet_type()},  % 1, 2, or line
                                             {packet_size, 65507 - ?PACKET_HEAD_MAX_SIZE - ?ID_SIZE},  % same as max length of UDP message

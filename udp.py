@@ -48,8 +48,9 @@ def loop_father():
 
 
 def loop(port):
-    s = bind_udp_socket(port + 1)
-    upstream = ("127.0.0.1", port)
+    upstream = host, _ = "127.0.0.3", port
+    s = bind_udp_socket(port + 1, host)
+    s.connect((host, 0))
 
     num_of_locks = num_of_children ** 2
     assert num_of_locks == pow(num_of_children, 2), num_of_locks
